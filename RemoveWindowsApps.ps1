@@ -5,14 +5,22 @@
     This script removes a comprehensive list of built-in Windows 10 apps.
     Logs all actions, errors, and warnings to a file: RemoveWindowsApps_Log_[Date].txt
 .NOTES
-    Run this script as Administrator or SYSTEM.
+    Run this script as Administrator.
     Backup your system or create a restore point before running this script.
 #>
 
+# Create log directory if it doesn't exist
+$logDir = "$env:USERPROFILE\Desktop\Logs"
+if (-not (Test-Path $logDir)) {
+    New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+}
+
 # Define log file path
 $logFileName = "RemoveWindowsApps_Log_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
-$logFilePath = Join-Path -Path $env:USERPROFILE\Desktop -ChildPath $logFileName
-Write-Host "Log file will be saved to: $logFilePath" -ForegroundColor Cyan
+$logFilePath = Join-Path -Path $logDir -ChildPath $logFileName
+
+# Create empty log file immediately
+New-Item -Path $logFilePath -ItemType File -Force | Out-Null
 
 # Function to log messages
 function Write-Log {
@@ -31,46 +39,46 @@ function Write-Log {
     }
 }
 
+# Main script execution
 try {
-    # Log script start
     Write-Log "Script started."
 
     # List of apps to remove (Package Name Partial)
     $appsToRemove = @(
-        "Microsoft.MicrosoftEdge",                # Microsoft Edge
-        "Microsoft.WindowsCommunicationsApps",   # Mail and Calendar
-        "Microsoft.MSPaint",                     # Paint 3D
-        "Microsoft.MicrosoftStickyNotes",       # Sticky Notes
-        "Microsoft.WindowsCalculator",           # Calculator
-        "Microsoft.WindowsAlarms",               # Alarms & Clock
-        "Microsoft.WindowsSoundRecorder",       # Voice Recorder
-        "Microsoft.ZuneMusic",                   # Groove Music
-        "Microsoft.WindowsCamera",               # Camera
-        "Microsoft.XboxApp",                     # Xbox
-        "Microsoft.SkypeApp",                    # Skype
-        "Microsoft.Office.OneNote",              # OneNote
-        "Microsoft.People",                      # People
-        "Microsoft.WindowsFeedbackHub",          # Feedback Hub
-        "Microsoft.Xbox.TCUI",                   # Xbox Console Companion
-        "Microsoft.Windows.Holographic.FirstRun", # Mixed Reality Portal
-        "Microsoft.549981C3F5F10",               # Cortana
-        "Microsoft.WindowsMaps",                 # Maps
-        "Microsoft.BingWeather",                 # Weather
-        "Microsoft.BingNews",                    # News
-        "Microsoft.BingSports",                  # Sports
-        "Microsoft.BingFinance",                 # Money
-        "InternetExplorer",                      # Internet Explorer
-        "Microsoft.GetHelp",                     # Get Help
-        "Microsoft.Getstarted",                  # Get Started
-        "Microsoft.MicrosoftOfficeHub",          # Office Hub
-        "Microsoft.MicrosoftSolitaireCollection", # Solitaire
-        "Microsoft.Office.Sway",                 # Sway
-        "Microsoft.OneConnect",                  # OneConnect
-        "Microsoft.PowerAutomateDesktop",        # Power Automate
-        "Microsoft.ScreenSketch",                # Screen Sketch
-        "Microsoft.WindowsFeedback",            # Feedback
-        "Microsoft.WindowsStore",                # Microsoft Store
-        "Microsoft.YourPhone"                    # Your Phone
+        "Microsoft.MicrosoftEdge",
+        "Microsoft.WindowsCommunicationsApps",
+        "Microsoft.MSPaint",
+        "Microsoft.MicrosoftStickyNotes",
+        "Microsoft.WindowsCalculator",
+        "Microsoft.WindowsAlarms",
+        "Microsoft.WindowsSoundRecorder",
+        "Microsoft.ZuneMusic",
+        "Microsoft.WindowsCamera",
+        "Microsoft.XboxApp",
+        "Microsoft.SkypeApp",
+        "Microsoft.Office.OneNote",
+        "Microsoft.People",
+        "Microsoft.WindowsFeedbackHub",
+        "Microsoft.Xbox.TCUI",
+        "Microsoft.Windows.Holographic.FirstRun",
+        "Microsoft.549981C3F5F10",
+        "Microsoft.WindowsMaps",
+        "Microsoft.BingWeather",
+        "Microsoft.BingNews",
+        "Microsoft.BingSports",
+        "Microsoft.BingFinance",
+        "InternetExplorer",
+        "Microsoft.GetHelp",
+        "Microsoft.Getstarted",
+        "Microsoft.MicrosoftOfficeHub",
+        "Microsoft.MicrosoftSolitaireCollection",
+        "Microsoft.Office.Sway",
+        "Microsoft.OneConnect",
+        "Microsoft.PowerAutomateDesktop",
+        "Microsoft.ScreenSketch",
+        "Microsoft.WindowsFeedback",
+        "Microsoft.WindowsStore",
+        "Microsoft.YourPhone"
     )
 
     # List of problematic apps to skip
@@ -85,36 +93,53 @@ try {
             Write-Log "Skipping $app (known issue)." -Level "WARN"
             continue
         }
-        Write-Log "Removing $app for all users..."
+
+        Write-Log "Attempting to remove $app for all users..."
+
+        # Remove provisioned packages
         try {
-            $provisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like "*$app*"
+            $provisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like "*$app*" -ErrorAction Stop
             if ($provisionedPackages) {
-                $provisionedPackages | Remove-AppxProvisionedPackage -Online -ErrorAction Stop
-                Write-Log "Successfully removed provisioned package for $app."
+                foreach ($package in $provisionedPackages) {
+                    try {
+                        Remove-AppxProvisionedPackage -Online -PackageName $package.PackageName -ErrorAction Stop
+                        Write-Log "Successfully removed provisioned package for $($package.DisplayName)."
+                    } catch {
+                        Write-Log "Failed to remove provisioned package $($package.DisplayName): $_" -Level "ERROR"
+                    }
+                }
             } else {
                 Write-Log "No provisioned package found for $app." -Level "WARN"
             }
         } catch {
-            Write-Log "Failed to remove provisioned package for $app: $_" -Level "ERROR"
+            Write-Log "Error checking provisioned packages for $app: $_" -Level "ERROR"
         }
+
+        # Remove installed packages
         try {
-            $appPackages = Get-AppxPackage -AllUsers *$app*
+            $appPackages = Get-AppxPackage -AllUsers | Where-Object Name -like "*$app*" -ErrorAction Stop
             if ($appPackages) {
-                $appPackages | Remove-AppxPackage -ErrorAction Stop
-                Write-Log "Successfully removed app package for $app."
+                foreach ($package in $appPackages) {
+                    try {
+                        Remove-AppxPackage -Package $package.PackageFullName -ErrorAction Stop
+                        Write-Log "Successfully removed app package for $($package.Name)."
+                    } catch {
+                        Write-Log "Failed to remove app package $($package.Name): $_" -Level "ERROR"
+                    }
+                }
             } else {
                 Write-Log "No app package found for $app." -Level "WARN"
             }
         } catch {
-            Write-Log "Failed to remove app package for $app: $_" -Level "ERROR"
+            Write-Log "Error checking app packages for $app: $_" -Level "ERROR"
         }
     }
 
     Write-Log "Script completed successfully." -Level "INFO"
 } catch {
     Write-Log "Script terminated unexpectedly: $_" -Level "ERROR"
+} finally {
+    Write-Log "Script execution finished."
+    Write-Host "`nScript completed. Log file saved to: $logFilePath" -ForegroundColor Green
+    Read-Host -Prompt "Press Enter to exit"
 }
-
-Write-Log "Script execution finished."
-Write-Host "Script completed. Log file saved to: $logFilePath" -ForegroundColor Green
-Read-Host -Prompt "Press Enter to exit"

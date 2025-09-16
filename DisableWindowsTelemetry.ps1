@@ -5,14 +5,22 @@
     This script disables telemetry, services, and scheduled tasks for a privacy-focused experience.
     Logs all actions, errors, and warnings to a file: DisableWindowsTelemetry_Log_[Date].txt
 .NOTES
-    Run this script as Administrator or SYSTEM.
+    Run this script as Administrator.
     Backup your system or create a restore point before running this script.
 #>
 
+# Create log directory if it doesn't exist
+$logDir = "$env:USERPROFILE\Desktop\Logs"
+if (-not (Test-Path $logDir)) {
+    New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+}
+
 # Define log file path
 $logFileName = "DisableWindowsTelemetry_Log_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
-$logFilePath = Join-Path -Path $env:USERPROFILE\Desktop -ChildPath $logFileName
-Write-Host "Log file will be saved to: $logFilePath" -ForegroundColor Cyan
+$logFilePath = Join-Path -Path $logDir -ChildPath $logFileName
+
+# Create empty log file immediately
+New-Item -Path $logFilePath -ItemType File -Force | Out-Null
 
 # Function to log messages
 function Write-Log {
@@ -39,20 +47,24 @@ function Set-RegistryProperty {
         [int]$Value,
         [string]$Type
     )
-    if (Test-Path $Path) {
-        try {
+
+    try {
+        if (Test-Path $Path) {
             Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force -ErrorAction Stop
             Write-Log "Successfully set registry property: $Path\$Name"
-        } catch {
-            Write-Log "Failed to set registry property $Path\$Name: $_" -Level "ERROR"
+        } else {
+            # Create the path if it doesn't exist
+            New-Item -Path $Path -Force | Out-Null
+            Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force -ErrorAction Stop
+            Write-Log "Created path and set registry property: $Path\$Name"
         }
-    } else {
-        Write-Log "Registry path $Path does not exist. Skipping..." -Level "WARN"
+    } catch {
+        Write-Log "Failed to set registry property $Path\$Name: $_" -Level "ERROR"
     }
 }
 
+# Main script execution
 try {
-    # Log script start
     Write-Log "Script started."
 
     # Disable and remove Windows telemetry and diagnostic tracking
@@ -124,18 +136,25 @@ try {
     )
 
     foreach ($service in $servicesToDisable) {
-        $serviceObj = Get-Service -Name $service -ErrorAction SilentlyContinue
-        if ($serviceObj -ne $null) {
-            Write-Log "Stopping and disabling service: $service"
-            try {
-                Stop-Service -Name $service -Force -ErrorAction Stop
-                Set-Service -Name $service -StartupType Disabled -ErrorAction Stop
-                Write-Log "Successfully stopped and disabled service: $service"
-            } catch {
-                Write-Log "Failed to stop/disable service $service: $_" -Level "ERROR"
+        try {
+            $serviceObj = Get-Service -Name $service -ErrorAction Stop
+            if ($serviceObj -ne $null) {
+                Write-Log "Stopping and disabling service: $service"
+                try {
+                    if ($serviceObj.Status -ne "Stopped") {
+                        Stop-Service -Name $service -Force -ErrorAction Stop
+                        Write-Log "Successfully stopped service: $service"
+                    }
+                    Set-Service -Name $service -StartupType Disabled -ErrorAction Stop
+                    Write-Log "Successfully disabled service: $service"
+                } catch {
+                    Write-Log "Failed to stop/disable service $service: $_" -Level "ERROR"
+                }
+            } else {
+                Write-Log "Service $service not found. Skipping..." -Level "WARN"
             }
-        } else {
-            Write-Log "Service $service not found. Skipping..." -Level "WARN"
+        } catch {
+            Write-Log "Error checking service $service: $_" -Level "ERROR"
         }
     }
 
@@ -157,8 +176,8 @@ try {
             $tasks = Get-ScheduledTask -TaskPath $path -ErrorAction Stop
             if ($tasks) {
                 foreach ($task in $tasks) {
-                    Write-Log "Disabling scheduled task: $($task.TaskName)"
                     try {
+                        Write-Log "Disabling scheduled task: $($task.TaskName)"
                         Disable-ScheduledTask -TaskName $task.TaskName -ErrorAction Stop
                         Write-Log "Successfully disabled scheduled task: $($task.TaskName)"
                     } catch {
@@ -176,8 +195,8 @@ try {
     Write-Log "Script completed successfully." -Level "INFO"
 } catch {
     Write-Log "Script terminated unexpectedly: $_" -Level "ERROR"
+} finally {
+    Write-Log "Script execution finished."
+    Write-Host "`nScript completed. Log file saved to: $logFilePath" -ForegroundColor Green
+    Read-Host -Prompt "Press Enter to exit"
 }
-
-Write-Log "Script execution finished."
-Write-Host "Script completed. Log file saved to: $logFilePath" -ForegroundColor Green
-Read-Host -Prompt "Press Enter to exit"
