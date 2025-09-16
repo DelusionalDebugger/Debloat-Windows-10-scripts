@@ -90,54 +90,54 @@ try {
     # Remove apps for all users
     foreach ($app in $appsToRemove) {
         if ($problematicApps -contains $app) {
-            Write-Log "Skipping $app (known issue)." -Level "WARN"
+            Write-Log ("Skipping " + $app + " (known issue).") -Level "WARN"
             continue
         }
 
-        Write-Log "Attempting to remove $app for all users..."
+        Write-Log ("Attempting to remove " + $app + " for all users...")
 
         # Remove provisioned packages
         try {
-            $provisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like "*$app*" -ErrorAction Stop
+            $provisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -like "*$app*" } -ErrorAction Stop
             if ($provisionedPackages) {
                 foreach ($package in $provisionedPackages) {
                     try {
                         Remove-AppxProvisionedPackage -Online -PackageName $package.PackageName -ErrorAction Stop
-                        Write-Log "Successfully removed provisioned package for $($package.DisplayName)."
+                        Write-Log ("Successfully removed provisioned package for " + $package.DisplayName + ".")
                     } catch {
-                        Write-Log "Failed to remove provisioned package $($package.DisplayName): $_" -Level "ERROR"
+                        Write-Log ("Failed to remove provisioned package " + $package.DisplayName + ": $_") -Level "ERROR"
                     }
                 }
             } else {
-                Write-Log "No provisioned package found for $app." -Level "WARN"
+                Write-Log ("No provisioned package found for " + $app + ".") -Level "WARN"
             }
         } catch {
-            Write-Log "Error checking provisioned packages for $app: $_" -Level "ERROR"
+            Write-Log ("Error checking provisioned packages for " + $app + ": $_") -Level "ERROR"
         }
 
         # Remove installed packages
         try {
-            $appPackages = Get-AppxPackage -AllUsers | Where-Object Name -like "*$app*" -ErrorAction Stop
+            $appPackages = Get-AppxPackage -AllUsers | Where-Object { $_.Name -like "*$app*" } -ErrorAction Stop
             if ($appPackages) {
                 foreach ($package in $appPackages) {
                     try {
                         Remove-AppxPackage -Package $package.PackageFullName -ErrorAction Stop
-                        Write-Log "Successfully removed app package for $($package.Name)."
+                        Write-Log ("Successfully removed app package for " + $package.Name + ".")
                     } catch {
-                        Write-Log "Failed to remove app package $($package.Name): $_" -Level "ERROR"
+                        Write-Log ("Failed to remove app package " + $package.Name + ": $_") -Level "ERROR"
                     }
                 }
             } else {
-                Write-Log "No app package found for $app." -Level "WARN"
+                Write-Log ("No app package found for " + $app + ".") -Level "WARN"
             }
         } catch {
-            Write-Log "Error checking app packages for $app: $_" -Level "ERROR"
+            Write-Log ("Error checking app packages for " + $app + ": $_") -Level "ERROR"
         }
     }
 
     Write-Log "Script completed successfully." -Level "INFO"
 } catch {
-    Write-Log "Script terminated unexpectedly: $_" -Level "ERROR"
+    Write-Log ("Script terminated unexpectedly: $_") -Level "ERROR"
 } finally {
     Write-Log "Script execution finished."
     Write-Host "`nScript completed. Log file saved to: $logFilePath" -ForegroundColor Green
